@@ -1,0 +1,10 @@
+{
+  "id": "default",
+  "files": {
+    "annex_II.csv": "815988e3421997ce3573f83633612d9a8690123e2ff17c5f882e2ef04ea82f86",
+    "annex_III.csv": "fe5a3d24973f3d8262d5a13190f1fa33dd6dc85892655c261597c4a2e35cfa18",
+    "annex_IV.csv": "cf5a0f67c97d52ca58511bba922c4ddef7ead4108b1a848b124472ae993b9f98",
+    "annex_V.csv": "0e06f91f11b4973b3d36ad2d0c072c3137dc5d4ea515569e59b240d79ec33eda",
+    "annex_VI.csv": "e435254709f897422d4962b711ade827110e4e70c12fadd1d75d2e5fcdde07c8"
+  }
+}
