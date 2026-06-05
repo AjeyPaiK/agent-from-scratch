@@ -33,7 +33,7 @@ Tracing is optional. Copy `.env.example` to `.env` and set Langfuse keys to enab
 | Signal | Where |
 |--------|--------|
 | **Traces** | Langfuse — one `compliance-turn` span per user turn (graph + LLM callbacks) |
-| **Scores** | Langfuse — tool oracle accuracy, per-stage guardrail pass/fail |
+| **Scores** | Langfuse — per-tool oracle accuracy, composite `turn_trustworthiness`, per-stage guardrail pass/fail |
 | **Metadata** | Langfuse span — intent, tools used, blocked flag, guardrail summary |
 | **Local logs** | Logger `eu_cosmetics.agent` — INFO summaries when Langfuse is off; set `AGENT_LOG_TURNS=true` to keep INFO with tracing |
 
@@ -56,5 +56,13 @@ tools/           3 tools (live API lookup, concentration, labelling)
 data/            cosing_api.py (live EU CosIng client) + product_types.py (static vocab)
 ui/              Streamlit chat
 observability/   Langfuse integration, turn tracing, local turn logs
+scoring/         CSV oracles, per-tool accuracy, composite trustworthiness
+docs/SCORING.md  Full scoring spec (§2.1)
 ```
+
+## Scoring
+
+Code-based oracle scoring and the composite **turn trustworthiness** metric are
+documented in [`docs/SCORING.md`](docs/SCORING.md). Scores are turn-scoped and
+exported to Langfuse when tracing is enabled.
 

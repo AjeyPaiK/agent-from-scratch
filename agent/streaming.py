@@ -15,6 +15,7 @@ from agent.state import AgentState
 from agent.tool_trace import TOOL_LABELS
 from guardrails import check_pre_input
 from guardrails.types import GuardrailReport
+from scoring.trustworthiness import compute_turn_trustworthiness
 from observability.langfuse_integration import langfuse_enabled
 from observability.turn_log import log_turn_summary
 from observability.turn_trace import stream_compliance_turn
@@ -205,10 +206,12 @@ def _stream_turn_core(
         result = state_to_result(cast(AgentState, last_values))
     else:
         pre = check_pre_input(user_message)
+        guardrails = GuardrailReport(pre_input=pre)
         result = TurnResult(
             answer="The agent did not return a response. Please try again.",
             intent=intent,
-            guardrails=GuardrailReport(pre_input=pre),
+            guardrails=guardrails,
+            trustworthiness=compute_turn_trustworthiness([], guardrails),
         )
 
     if result.blocked:

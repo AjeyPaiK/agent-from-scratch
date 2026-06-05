@@ -18,9 +18,11 @@ from observability.langfuse_integration import (
     enrich_compliance_turn_span,
     export_guardrail_scores,
     export_tool_accuracy_scores,
+    export_turn_trustworthiness_score,
     finalize_turn_observability,
     resolve_export_trace_id,
 )
+from scoring.trustworthiness import compute_turn_trustworthiness
 
 
 @patch("observability.langfuse_integration.langfuse_enabled", return_value=True)
@@ -123,6 +125,51 @@ def test_export_uses_concentration_score_name(mock_get_client, _enabled):
 
 @patch("observability.langfuse_integration.langfuse_enabled", return_value=True)
 @patch("langfuse.get_client")
+def test_export_turn_trustworthiness_score(mock_get_client, _enabled):
+    """Export composite turn trustworthiness to Langfuse."""
+    client = MagicMock()
+    mock_get_client.return_value = client
+
+    trace = [
+        ToolTraceEntry(
+            step=1,
+            name="lookup_ingredient_regulation",
+            label="Ingredient lookup",
+            args={"inci_name": "Phenoxyethanol"},
+            output={"found": True},
+            accuracy=0.9,
+        )
+    ]
+    guardrails = GuardrailReport(
+        pre_input=GuardrailVerdict("pre_input", True, "ok", "accepted"),
+        post_output=GuardrailVerdict("post_output", True, "ok", "verified"),
+    )
+    trust = compute_turn_trustworthiness(trace, guardrails)
+
+    export_turn_trustworthiness_score(
+        trace,
+        guardrails,
+        "trace-999",
+        trustworthiness=trust,
+    )
+
+    client.create_score.assert_called_once_with(
+        name="turn_trustworthiness",
+        value=trust.value,
+        trace_id="trace-999",
+        score_id="trace-999:turn_trustworthiness",
+        data_type="NUMERIC",
+        comment=(
+            f"tool_accuracy={trust.tool_accuracy:.4f} "
+            f"guardrail_integrity={trust.guardrail_integrity:.4f} "
+            f"(weights {trust.tool_weight:.1f}/{trust.guardrail_weight:.1f})"
+        ),
+    )
+    client.flush.assert_called_once()
+
+
+@patch("observability.langfuse_integration.langfuse_enabled", return_value=True)
+@patch("langfuse.get_client")
 def test_export_status_score_when_tools_not_scorable(mock_get_client, _enabled):
     """Export a zero status score when no tool output is scorable.
 
@@ -147,8 +194,8 @@ def test_export_status_score_when_tools_not_scorable(mock_get_client, _enabled):
                 step=1,
                 name="get_labelling_marketing_rules",
                 label="Labelling rules",
-                args={},
-                output={},
+                args={"inci_name": "X"},
+                output={"found": False},
             )
         ],
         "trace-123",
@@ -305,6 +352,12 @@ def test_finalize_turn_observability(
         ),
         guardrails=GuardrailReport(
             pre_input=GuardrailVerdict("pre_input", True, "ok", "accepted"),
+        ),
+        trustworthiness=compute_turn_trustworthiness(
+            [],
+            GuardrailReport(
+                pre_input=GuardrailVerdict("pre_input", True, "ok", "accepted"),
+            ),
         ),
         blocked=False,
     )

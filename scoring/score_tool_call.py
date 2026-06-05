@@ -8,14 +8,20 @@ from typing import Any
 
 from agent.tool_args import sanitize_tool_kwargs
 from config.settings import ANNEX_SNAPSHOT_DIR
-from scoring.compare import compare_concentration_output, compare_lookup_output
+from scoring.compare import (
+    compare_concentration_output,
+    compare_labelling_output,
+    compare_lookup_output,
+)
 from scoring.oracle.concentration import oracle_check_concentration_compliance
+from scoring.oracle.labelling import oracle_get_labelling_marketing_rules
 from scoring.oracle.lookup import oracle_lookup_ingredient_regulation
 from scoring.types import ToolAccuracyScore
 
 _COMPARATORS: dict[str, Callable[[dict[str, Any], dict[str, Any]], tuple[float, list[str]]]] = {
     "lookup_ingredient_regulation": compare_lookup_output,
     "check_concentration_compliance": compare_concentration_output,
+    "get_labelling_marketing_rules": compare_labelling_output,
 }
 
 
@@ -94,6 +100,13 @@ def score_tool_call(
         )
     elif tool_name == "check_concentration_compliance":
         expected = oracle_check_concentration_compliance(
+            args.get("inci_name", ""),
+            args.get("product_category", ""),
+            args.get("concentration_percent"),
+            snapshot_dir=snapshot_dir,
+        )
+    elif tool_name == "get_labelling_marketing_rules":
+        expected = oracle_get_labelling_marketing_rules(
             args.get("inci_name", ""),
             args.get("product_category", ""),
             args.get("concentration_percent"),

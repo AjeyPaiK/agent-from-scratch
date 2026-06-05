@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from agent.tool_trace import ToolTraceEntry
 from config.settings import LANGFUSE_ENABLED
+from scoring.trustworthiness import TurnTrustworthiness, compute_turn_trustworthiness
 
 if TYPE_CHECKING:
     from langfuse.langchain import CallbackHandler
@@ -141,6 +142,7 @@ def build_graph_config(
 SCORE_NAME_BY_TOOL: dict[str, str] = {
     "lookup_ingredient_regulation": "tool_accuracy_lookup",
     "check_concentration_compliance": "tool_accuracy_concentration",
+    "get_labelling_marketing_rules": "tool_accuracy_labelling",
 }
 
 
@@ -230,6 +232,65 @@ def export_tool_accuracy_scores(
         )
 
     client.flush()
+
+
+def export_turn_trustworthiness_score(
+    tool_trace: list[ToolTraceEntry],
+    guardrails: GuardrailReport,
+    trace_id: str | None = None,
+    *,
+    blocked: bool = False,
+    trustworthiness: TurnTrustworthiness | None = None,
+) -> TurnTrustworthiness | None:
+    """Push the composite turn trustworthiness score to Langfuse (assignment §2.2).
+
+    Parameters
+    ----------
+    tool_trace : list[ToolTraceEntry]
+        Tool trace entries for the turn.
+    guardrails : GuardrailReport
+        Guardrail verdicts for the turn.
+    trace_id : str or None, optional
+        Langfuse trace id to attach the score to.
+    blocked : bool, optional
+        Whether pre-input guardrails blocked the turn.
+    trustworthiness : TurnTrustworthiness or None, optional
+        Precomputed score; computed from ``tool_trace`` and ``guardrails`` when
+        omitted.
+
+    Returns
+    -------
+    TurnTrustworthiness or None
+        The composite score, or ``None`` when Langfuse is disabled or no trace id.
+    """
+    if trustworthiness is None:
+        trustworthiness = compute_turn_trustworthiness(
+            tool_trace,
+            guardrails,
+            blocked=blocked,
+        )
+
+    if not langfuse_enabled() or not trace_id:
+        return trustworthiness
+
+    from langfuse import get_client
+
+    client = get_client()
+    client.create_score(
+        name="turn_trustworthiness",
+        value=trustworthiness.value,
+        trace_id=str(trace_id),
+        score_id=f"{trace_id}:turn_trustworthiness",
+        data_type="NUMERIC",
+        comment=(
+            f"tool_accuracy={trustworthiness.tool_accuracy:.4f} "
+            f"guardrail_integrity={trustworthiness.guardrail_integrity:.4f} "
+            f"(weights {trustworthiness.tool_weight:.1f}/"
+            f"{trustworthiness.guardrail_weight:.1f})"
+        ),
+    )
+    client.flush()
+    return trustworthiness
 
 
 def export_guardrail_scores(
@@ -337,6 +398,7 @@ def build_turn_metadata(
     tool_names: list[str],
     answer_chars: int,
     avg_tool_accuracy: float | None = None,
+    trustworthiness: float | None = None,
 ) -> dict[str, str]:
     """Build Langfuse-safe string metadata for a completed turn.
 
@@ -356,6 +418,8 @@ def build_turn_metadata(
         Length of the final answer string.
     avg_tool_accuracy : float or None, optional
         Mean oracle accuracy when any tool was scored.
+    trustworthiness : float or None, optional
+        Composite turn trustworthiness score.
 
     Returns
     -------
@@ -373,6 +437,8 @@ def build_turn_metadata(
     }
     if avg_tool_accuracy is not None:
         metadata["tool_accuracy_avg"] = f"{avg_tool_accuracy:.4f}"
+    if trustworthiness is not None:
+        metadata["turn_trustworthiness"] = f"{trustworthiness:.4f}"
     return metadata
 
 
@@ -444,6 +510,8 @@ def finalize_turn_observability(
         tool_trace=list(result.tool_trace),
         guardrails=result.guardrails,
         trace_id=resolved_trace_id,
+        blocked=bool(result.blocked),
+        trustworthiness=result.trustworthiness,
     )
 
     scored = [entry for entry in result.tool_trace if entry.accuracy is not None]
@@ -452,6 +520,9 @@ def finalize_turn_observability(
         accuracies = [entry.accuracy for entry in scored if entry.accuracy is not None]
         avg_accuracy = sum(accuracies) / len(accuracies)
 
+    trustworthiness_value = (
+        result.trustworthiness.value if result.trustworthiness is not None else None
+    )
     tool_names = [entry.name for entry in result.tool_trace]
     metadata = build_turn_metadata(
         intent=result.intent.primary_intent,
@@ -461,6 +532,7 @@ def finalize_turn_observability(
         tool_names=tool_names,
         answer_chars=len(result.answer),
         avg_tool_accuracy=avg_accuracy,
+        trustworthiness=trustworthiness_value,
     )
     enrich_compliance_turn_span(
         user_message=user_message,
@@ -476,8 +548,10 @@ def export_turn_scores(
     tool_trace: list[ToolTraceEntry],
     guardrails: GuardrailReport,
     trace_id: str | None = None,
+    blocked: bool = False,
+    trustworthiness: TurnTrustworthiness | None = None,
 ) -> None:
-    """Export tool accuracy and guardrail scores for one turn.
+    """Export tool accuracy, guardrail, and composite trustworthiness scores.
 
     Parameters
     ----------
@@ -487,6 +561,10 @@ def export_turn_scores(
         Composite guardrail verdict for the turn.
     trace_id : str or None, optional
         Langfuse trace id to attach scores to, by default ``None``.
+    blocked : bool, optional
+        Whether pre-input guardrails blocked the turn.
+    trustworthiness : TurnTrustworthiness or None, optional
+        Precomputed composite score for the turn.
 
     Returns
     -------
@@ -494,10 +572,18 @@ def export_turn_scores(
 
     Notes
     -----
-    Delegates to ``export_tool_accuracy_scores`` and ``export_guardrail_scores``.
+    Delegates to ``export_tool_accuracy_scores``, ``export_guardrail_scores``,
+    and ``export_turn_trustworthiness_score``.
     """
     export_tool_accuracy_scores(tool_trace, trace_id)
     export_guardrail_scores(guardrails, trace_id)
+    export_turn_trustworthiness_score(
+        tool_trace,
+        guardrails,
+        trace_id,
+        blocked=blocked,
+        trustworthiness=trustworthiness,
+    )
 
 
 @contextmanager

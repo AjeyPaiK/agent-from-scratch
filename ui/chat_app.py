@@ -206,10 +206,14 @@ def _consume_stream(prompt: str, history: list[BaseMessage]) -> TurnResult:
         from guardrails.types import GuardrailReport
 
         pre = check_pre_input(prompt)
+        guardrails = GuardrailReport(pre_input=pre)
+        from scoring.trustworthiness import compute_turn_trustworthiness
+
         result = TurnResult(
             answer="".join(answer_parts) or "No response.",
             intent=classify_intent(prompt),
-            guardrails=GuardrailReport(pre_input=pre),
+            guardrails=guardrails,
+            trustworthiness=compute_turn_trustworthiness([], guardrails),
         )
 
     reasoning_slot.empty()

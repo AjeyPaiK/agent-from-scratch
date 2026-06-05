@@ -34,6 +34,8 @@ def main() -> int:
 
     print(f"[intent: {result.intent.primary_intent}]")
     print(f"[guardrails: {'pass' if result.guardrails.all_passed else 'issues'}]")
+    if result.trustworthiness is not None:
+        print(f"[trustworthiness: {result.trustworthiness.value:.3f}]")
     if result.tool_trace:
         print("[tools]")
         for entry in result.tool_trace:

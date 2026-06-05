@@ -323,3 +323,80 @@ def compare_lookup_output(
 
     confidence = MATCH_CONFIDENCE.get(str(actual.get("match_type")), 1.0)
     return min(1.0, score * confidence), mismatches
+
+
+def _normalized_strings(items: list[Any] | None) -> set[str]:
+    """Return a set of stripped, lowercased strings from a list field."""
+    return {str(item).strip().lower() for item in (items or []) if str(item).strip()}
+
+
+def compare_labelling_output(
+    actual: dict[str, Any], expected: dict[str, Any]
+) -> tuple[float, list[str]]:
+    """Score ``get_labelling_marketing_rules`` output against the CSV oracle.
+
+    Parameters
+    ----------
+    actual : dict[str, Any]
+        Tool output from ``get_labelling_marketing_rules``.
+    expected : dict[str, Any]
+        Oracle expected output for the same arguments.
+
+    Returns
+    -------
+    accuracy : float
+        Weighted similarity score in ``[0.0, 1.0]``.
+    mismatches : list[str]
+        Names of fields that differ.
+
+    Notes
+    -----
+    Weights: ``found`` 0.15, ``inci_name`` 0.10, ``product_category`` 0.10,
+    ``labelling_requirements`` 0.35, ``marketing_restrictions`` 0.20,
+    ``references`` 0.10. List fields use Jaccard similarity on normalized
+    strings. An ``error`` key in ``actual`` yields score ``0.0``.
+    """
+    mismatches: list[str] = []
+    weights = {
+        "found": 0.15,
+        "inci_name": 0.10,
+        "product_category": 0.10,
+        "labelling_requirements": 0.35,
+        "marketing_restrictions": 0.20,
+        "references": 0.10,
+    }
+    score = 0.0
+
+    if actual.get("error"):
+        return 0.0, ["error"]
+
+    if bool(actual.get("found")) != bool(expected.get("found")):
+        mismatches.append("found")
+    else:
+        score += weights["found"]
+
+    if not expected.get("found"):
+        return score, mismatches
+
+    if (actual.get("inci_name") or "").strip() != (expected.get("inci_name") or "").strip():
+        mismatches.append("inci_name")
+    else:
+        score += weights["inci_name"]
+
+    if (actual.get("product_category") or "").strip() != (
+        expected.get("product_category") or ""
+    ).strip():
+        if expected.get("product_category") or actual.get("product_category"):
+            mismatches.append("product_category")
+    elif expected.get("product_category"):
+        score += weights["product_category"]
+
+    for field in ("labelling_requirements", "marketing_restrictions", "references"):
+        actual_set = _normalized_strings(actual.get(field))
+        expected_set = _normalized_strings(expected.get(field))
+        field_score = _jaccard(actual_set, expected_set)
+        score += weights[field] * field_score
+        if field_score < 1.0:
+            mismatches.append(field)
+
+    return min(1.0, score), mismatches

@@ -64,6 +64,8 @@ def log_turn_summary(
     }
     if avg_accuracy is not None:
         payload["tool_accuracy_avg"] = round(avg_accuracy, 4)
+    if result.trustworthiness is not None:
+        payload["turn_trustworthiness"] = round(result.trustworthiness.value, 4)
     if trace_id:
         payload["langfuse_trace_id"] = trace_id
 
@@ -72,6 +74,8 @@ def log_turn_summary(
         f"guardrails={'pass' if payload['guardrails_passed'] else 'fail'} "
         f"tools={payload['tool_count']}"
     )
+    if result.trustworthiness is not None:
+        message += f" trustworthiness={payload['turn_trustworthiness']}"
     if langfuse_enabled() and not AGENT_LOG_TURNS:
         logger.debug(message, extra=payload)
     else:

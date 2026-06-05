@@ -12,6 +12,7 @@ from agent.prompts import SYSTEM_PROMPT
 from agent.state import AgentState
 from agent.tool_trace import ToolTraceEntry
 from guardrails.types import GuardrailReport
+from scoring.trustworthiness import TurnTrustworthiness, compute_turn_trustworthiness
 from observability.langfuse_integration import langfuse_enabled
 from observability.turn_log import log_turn_summary
 from observability.turn_trace import run_compliance_turn
@@ -31,6 +32,8 @@ class TurnResult:
         Verdicts from all three symbolic guardrail stages.
     tool_trace : list[ToolTraceEntry]
         Structured record of tool calls executed during the turn.
+    trustworthiness : TurnTrustworthiness
+        Composite code-based trust score for this turn only.
     blocked : bool
         ``True`` when pre-input guardrails prevented the LLM from running.
     raw_messages : list[BaseMessage]
@@ -41,6 +44,7 @@ class TurnResult:
     intent: IntentResult
     guardrails: GuardrailReport
     tool_trace: list[ToolTraceEntry] = field(default_factory=list)
+    trustworthiness: TurnTrustworthiness | None = None
     blocked: bool = False
     raw_messages: list[BaseMessage] = field(default_factory=list)
 
@@ -94,12 +98,19 @@ def state_to_result(state: AgentState) -> TurnResult:
         pre_tool=list(state.get("pre_tool") or []),
         post_output=state.get("post_output"),
     )
+    tool_trace = list(state.get("tool_trace") or [])
+    blocked = bool(state.get("blocked", False))
     return TurnResult(
         answer=state.get("answer", ""),
         intent=state["intent"],
         guardrails=report,
-        tool_trace=list(state.get("tool_trace") or []),
-        blocked=bool(state.get("blocked", False)),
+        tool_trace=tool_trace,
+        trustworthiness=compute_turn_trustworthiness(
+            tool_trace,
+            report,
+            blocked=blocked,
+        ),
+        blocked=blocked,
         raw_messages=list(state.get("messages") or []),
     )
 
