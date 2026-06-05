@@ -6,4 +6,4 @@ __pycache__/
 .pytest_cache/
 
 # Cached live CosIng API responses (see data/cosing_api.py)
-data/.cosing_cache/
+data/
