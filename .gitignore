@@ -5,5 +5,6 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 
-# Cached live CosIng API responses (see data/cosing_api.py)
-data/
+# Runtime data — not source (see data/cosing_api.py, data/annex_snapshots.py)
+data/.cosing_cache/
+data/annex_snapshots/
